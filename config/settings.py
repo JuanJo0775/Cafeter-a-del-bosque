@@ -24,7 +24,7 @@ INSTALLED_APPS = [
     'rest_framework',
 
     # Local apps
-    'apps.users',
+    'apps.users.apps.UsersConfig',
     'apps.menu',
     'apps.orders',
     'apps.kitchen',
@@ -68,7 +68,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': config('DB_NAME', default='cafeteria_db'),
         'USER': config('DB_USER', default='postgres'),
-        'PASSWORD': config('DB_PASSWORD', default='postgres'),
+        'PASSWORD': config('DB_PASSWORD', default='posgre123'),
         'HOST': config('DB_HOST', default='localhost'),
         'PORT': config('DB_PORT', default='5432'),
     }
