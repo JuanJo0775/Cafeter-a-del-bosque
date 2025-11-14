@@ -9,8 +9,7 @@ from decimal import Decimal
 
 class Order(models.Model):
     """
-    Orden de pedido
-    Gestiona estados mediante State Pattern
+    Orden de pedido – soporta clientes NO registrados
     """
 
     STATUS_CHOICES = [
@@ -21,11 +20,23 @@ class Order(models.Model):
         ('CANCELADO', 'Cancelado'),
     ]
 
+    # Cliente no autenticado
+    customer_name = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Nombre del cliente sin registro"
+    )
+
+    # Usuario opcional
     customer = models.ForeignKey(
         User,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='orders'
     )
+
+    # Mesero (se asigna al final)
     mesero = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -35,7 +46,13 @@ class Order(models.Model):
     )
 
     table_number = models.IntegerField()
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDIENTE')
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='PENDIENTE'
+    )
+
     total_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     special_instructions = models.TextField(blank=True)
@@ -84,8 +101,7 @@ class OrderItem(models.Model):
     quantity = models.IntegerField(default=1)
     unit_price = models.DecimalField(max_digits=10, decimal_places=2)
 
-    # DECORATOR: extras aplicados
-    extras = models.JSONField(default=dict, help_text="Extras seleccionados: {'extra': True}")
+    extras = models.JSONField(default=dict)
     extras_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -121,19 +137,21 @@ class OrderItem(models.Model):
 
 class OrderHistory(models.Model):
     """
-    Historial de cambios de orden (para Command Pattern)
+    Historial de cambios de orden (Command Pattern)
     """
 
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='history')
     action = models.CharField(max_length=50)
     previous_status = models.CharField(max_length=20, blank=True)
     new_status = models.CharField(max_length=20, blank=True)
+
     changed_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
         null=True,
         blank=True
     )
+
     reason = models.TextField(blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
 

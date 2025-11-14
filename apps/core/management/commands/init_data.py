@@ -1,4 +1,5 @@
-# apps/core/management/commands/init_data.py
+# apps/core/commands/commands/init_data.py
+
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.contrib.auth import get_user_model
@@ -14,7 +15,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--force', action='store_true', help='Forzar recreación (override).')
         parser.add_argument('--dry-run', action='store_true', help='Simular sin aplicar cambios.')
-        parser.add_argument('--seed-users', action='store_true', help='Crear usuarios de prueba (admin, meseros, cocineros, clientes).')
+        parser.add_argument('--seed-users', action='store_true', help='Crear usuarios de prueba (admin, meseros, cocineros).')
 
     def handle(self, *args, **options):
         force = options['force']
@@ -22,7 +23,7 @@ class Command(BaseCommand):
         seed_users = options['seed_users']
 
         self.stdout.write("=" * 60)
-        self.stdout.write(" Iniciando init_data (management command) ")
+        self.stdout.write(" Iniciando init_data (commands command) ")
         self.stdout.write("=" * 60)
 
         if dry_run:
@@ -30,9 +31,12 @@ class Command(BaseCommand):
 
         try:
             with transaction.atomic():
-                # === Usuarios (opcional) ===
+
+                # === USUARIOS (ADMIN, MESEROS, COCINEROS) ===
                 if seed_users:
-                    # Superusuario (mantener credenciales sugeridas en scripts/init_data.py)
+                    # ------------------------
+                    # SUPERUSUARIO / ADMIN
+                    # ------------------------
                     admin_defaults = {
                         "email": "admin@cafedelbosque.com",
                         "is_staff": True,
@@ -50,7 +54,9 @@ class Command(BaseCommand):
                     else:
                         self.stdout.write("✓ Superusuario ya existe")
 
-                    # Meseros
+                    # ------------------------
+                    # MESEROS
+                    # ------------------------
                     meseros = [
                         ("maria_mesera", "María", "González", "maria@cafedelbosque.com"),
                         ("juan_mesero", "Juan", "Pérez", "juan@cafedelbosque.com"),
@@ -65,13 +71,15 @@ class Command(BaseCommand):
                                 "role": "MESERO"
                             }
                         )
-                        # aseguramos password y role
                         u.set_password("mesero123")
                         u.role = "MESERO"
                         u.save()
+
                     self.stdout.write("✓ Meseros verificados/creados")
 
-                    # Cocineros
+                    # ------------------------
+                    # COCINEROS
+                    # ------------------------
                     cocineros = [
                         ("carlos_chef", "Carlos", "Rodríguez", "carlos@cafedelbosque.com"),
                         ("laura_chef", "Laura", "Ramírez", "laura@cafedelbosque.com"),
@@ -89,33 +97,21 @@ class Command(BaseCommand):
                         u.set_password("chef123")
                         u.role = "COCINERO"
                         u.save()
+
                     self.stdout.write("✓ Cocineros verificados/creados")
 
-                    # Clientes de ejemplo (en tu script original se crean; aquí los dejamos como opcional)
-                    clientes = [
-                        ("ana_cliente", "Ana", "Martínez", "ana@email.com"),
-                        ("pedro_cliente", "Pedro", "López", "pedro@email.com"),
-                        ("sofia_cliente", "Sofía", "Ramírez", "sofia@email.com"),
-                    ]
-                    for username, fname, lname, email in clientes:
-                        u, created = User.objects.get_or_create(
-                            username=username,
-                            defaults={
-                                "first_name": fname,
-                                "last_name": lname,
-                                "email": email,
-                                "role": "CLIENTE"
-                            }
-                        )
-                        # establecer password si fue creado
-                        if created:
-                            u.set_password("cliente123")
-                            u.role = "CLIENTE"
-                            u.save()
-                    self.stdout.write("✓ Clientes (opcionales) verificados/creados")
+                    # ------------------------
+                    # IMPORTANTE:
+                    # No se crean usuarios CLIENTE porque ahora el cliente es anónimo
+                    # y solo usa un nombre (campo: customer_name).
+                    # ------------------------
+                    self.stdout.write(self.style.WARNING(
+                        "Clientes NO se crean porque ahora los clientes no usan login."
+                    ))
 
-                # === Categorías y productos base ===
+                # === CATEGORÍAS Y PRODUCTOS BASE ===
                 self.stdout.write("\nVerificando categorías y productos base...")
+
                 cat_bebidas, _ = Category.objects.get_or_create(
                     name="Bebidas",
                     defaults={"category_type": "BEBIDAS", "description": "Bebidas calientes y frías"}
@@ -125,7 +121,7 @@ class Command(BaseCommand):
                     defaults={"category_type": "COMIDAS", "description": "Platos principales"}
                 )
 
-                # Productos de ejemplo (solo si no existen)
+                # Productos
                 Product.objects.update_or_create(
                     name="Café Americano",
                     defaults={
@@ -146,9 +142,10 @@ class Command(BaseCommand):
                         "is_available": True
                     }
                 )
+
                 self.stdout.write(self.style.SUCCESS("✓ Categorías y productos verificados/creados"))
 
-                # === Estaciones de cocina ===
+                # === ESTACIONES DE COCINA ===
                 KitchenStation.objects.update_or_create(
                     name="Estación Bebidas Calientes",
                     defaults={"station_type": "BEBIDAS_CALIENTES", "is_active": True}
@@ -161,18 +158,16 @@ class Command(BaseCommand):
                     name="Estación Postres",
                     defaults={"station_type": "POSTRES", "is_active": True}
                 )
+
                 self.stdout.write(self.style.SUCCESS("✓ Estaciones de cocina verificadas/creadas"))
 
-                # Si se quiere forzar override, se podrían actualizar flags - por ahora usamos update_or_create para idempotencia
-
+                # Si dry-run, forzamos rollback
                 if dry_run:
-                    # Forzamos rollback de la transacción para simular
                     raise RuntimeError("DRY-RUN: forzando rollback (no se aplicaron cambios)")
 
             self.stdout.write(self.style.SUCCESS("init_data completado correctamente"))
 
         except Exception as e:
-            # Si dry_run, mensaje esperado; de lo contrario mostrar error.
             if dry_run and "DRY-RUN" in str(e):
                 self.stdout.write(self.style.WARNING("DRY-RUN finalizado. No se aplicaron cambios."))
             else:

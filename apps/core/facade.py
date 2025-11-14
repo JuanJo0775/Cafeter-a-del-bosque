@@ -40,7 +40,7 @@ class CafeteriaFacade:
 
     # ========== OPERACIONES DE ÓRDENES ==========
 
-    def crear_pedido_completo(self, customer_id, table_number, items, mesero_id=None, instructions=""):
+    def crear_pedido_completo(self, customer_id=None, customer_name="", table_number=None, items=None, mesero_id=None, instructions=""):
         """
         Operación completa: crear pedido con todos los patrones integrados
         """
@@ -48,7 +48,12 @@ class CafeteriaFacade:
 
         try:
             # 1. Obtener usuarios
-            customer = User.objects.get(id=customer_id)
+            # Soporte para cliente NO registrado
+            if customer_id:
+                customer = User.objects.get(id=customer_id)
+            else:
+                customer = None
+
             mesero = User.objects.get(id=mesero_id) if mesero_id else None
 
             # Registrar observers
@@ -62,6 +67,7 @@ class CafeteriaFacade:
 
             order = director.build_custom_order(
                 customer=customer,
+                customer_name=customer_name,
                 table=table_number,
                 items=items,
                 mesero=mesero,

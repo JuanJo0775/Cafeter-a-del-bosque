@@ -18,6 +18,7 @@ class OrderBuilder:
     def reset(self):
         """Resetear builder para nueva orden"""
         self._customer = None
+        self._customer_name = ""
         self._mesero = None
         self._table_number = None
         self._items = []
@@ -37,6 +38,17 @@ class OrderBuilder:
 
         self._customer = customer
         print(f"[BUILDER] Cliente establecido: {customer.username}")
+        return self
+
+    def set_customer_name(self, name):
+        """
+        Establecer nombre del cliente NO registrado.
+        """
+        if not isinstance(name, str) or len(name.strip()) == 0:
+            raise ValueError("El nombre del cliente no puede estar vacío")
+
+        self._customer_name = name.strip()
+        print(f"[BUILDER] Cliente (no registrado): {self._customer_name}")
         return self
 
     def set_mesero(self, mesero):
@@ -176,8 +188,9 @@ class OrderBuilder:
         """
         errors = []
 
-        if not self._customer:
-            errors.append("Cliente requerido")
+        # AHORA: permitir cliente_name O cliente registrado
+        if not self._customer and not self._customer_name:
+            errors.append("Se requiere cliente o nombre del cliente")
 
         if self._table_number is None:
             errors.append("Número de mesa requerido")
@@ -233,31 +246,27 @@ class OrderBuilder:
 
     def build(self):
         """
-        Construir y guardar la orden final
-
-        Returns:
-            Order guardada en BD
+        Construye y guarda la orden.
         """
-        # Validar antes de construir
         is_valid, errors = self.validate()
-
         if not is_valid:
             raise ValueError(f"Orden inválida: {', '.join(errors)}")
 
         print("[BUILDER] Construyendo orden...")
 
-        # Crear orden
+        # Crear orden con los nuevos campos
         order = Order.objects.create(
             customer=self._customer,
+            customer_name=self._customer_name,   # NUEVO
             mesero=self._mesero,
             table_number=self._table_number,
             special_instructions=self._special_instructions,
             status='PENDIENTE'
         )
 
-        print(f"[BUILDER] Orden #{order.id} creada - Estado: {order.status}")
+        print(f"[BUILDER] Orden #{order.id} creada")
 
-        # Agregar items
+        # Agregar items (igual que antes)
         for item_data in self._items:
             order_item = OrderItem.objects.create(
                 order=order,
@@ -272,8 +281,7 @@ class OrderBuilder:
 
         # Calcular total
         order.calculate_total()
-
-        print(f"[BUILDER] ✓ Orden #{order.id} construida - Total: ${order.total_price}")
+        print(f"[BUILDER] ✓ Total final: ${order.total_price}")
 
         return order
 
@@ -382,10 +390,8 @@ class OrderDirector:
                 .add_special_instructions("Orden para grupo - servir todos juntos")
                 .build())
 
-    def build_custom_order(self, customer, table, items, mesero=None, instructions=""):
+    def build_custom_order(self, customer, customer_name, table, items, mesero=None, instructions=""):
         """
-        Orden personalizada completa
-
         Args:
             customer: User
             table: int
@@ -399,7 +405,14 @@ class OrderDirector:
         print("[DIRECTOR] Construyendo orden personalizada...")
 
         self.builder.reset()
-        self.builder.set_customer(customer)
+
+        # Si hay usuario registrado, úsalo
+        if customer:
+            self.builder.set_customer(customer)
+        else:
+            # cliente NO registrado
+            self.builder.set_customer_name(customer_name)
+
         self.builder.set_table(table)
 
         if mesero:
