@@ -56,6 +56,88 @@ class Category(models.Model):
         total = sum(p.base_price for p in self.get_all_products())
         return total
 
+    def add_subcategory(self, name, description=""):
+        """Agregar subcategoría (operación composite)"""
+        subcategory = Category.objects.create(
+            name=name,
+            category_type=self.category_type,
+            description=description,
+            parent=self
+        )
+        print(f"[COMPOSITE] Subcategoría '{name}' agregada a '{self.name}'")
+        return subcategory
+
+    def remove_subcategory(self, subcategory):
+        """Remover subcategoría"""
+        if subcategory.parent == self:
+            subcategory.parent = None
+            subcategory.save()
+            print(f"[COMPOSITE] Subcategoría '{subcategory.name}' removida de '{self.name}'")
+
+    def get_all_products(self):
+        """
+        COMPOSITE: Obtener todos los productos recursivamente
+        Incluye productos de subcategorías
+        """
+        products = list(self.products.filter(is_available=True))
+
+        # Recursivamente obtener productos de subcategorías
+        for subcategory in self.subcategories.filter(is_active=True):
+            products.extend(subcategory.get_all_products())
+
+        return products
+
+    def get_total_price(self):
+        """COMPOSITE: Calcular precio total de todos los productos"""
+        total = sum(p.base_price for p in self.get_all_products())
+        return total
+
+    def get_product_count(self):
+        """COMPOSITE: Contar productos recursivamente"""
+        count = self.products.filter(is_available=True).count()
+
+        for subcategory in self.subcategories.filter(is_active=True):
+            count += subcategory.get_product_count()
+
+        return count
+
+    def display_hierarchy(self, level=0):
+        """
+        COMPOSITE: Mostrar jerarquía completa
+
+        Returns:
+            str con estructura visual
+        """
+        indent = "  " * level
+        result = f"{indent} {self.name} ({self.get_product_count()} productos)\n"
+
+        # Mostrar productos directos
+        for product in self.products.filter(is_available=True):
+            result += f"{indent}   {product.name} - ${product.base_price}\n"
+
+        # Mostrar subcategorías recursivamente
+        for subcategory in self.subcategories.filter(is_active=True):
+            result += subcategory.display_hierarchy(level + 1)
+
+        return result
+
+    def is_leaf(self):
+        """Verificar si es hoja (no tiene subcategorías)"""
+        return not self.subcategories.exists()
+
+    def get_depth(self):
+        """Obtener profundidad de la jerarquía"""
+        if self.is_leaf():
+            return 0
+
+        max_depth = 0
+        for subcategory in self.subcategories.all():
+            depth = subcategory.get_depth()
+            if depth > max_depth:
+                max_depth = depth
+
+        return max_depth + 1
+
 
 class Product(models.Model):
     """

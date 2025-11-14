@@ -124,3 +124,44 @@ class MenuProxy:
                     })
 
         return results
+
+        # AGREGAR estos métodos a la clase MenuProxy existente:
+
+        def get_statistics(self):
+            """Obtener estadísticas del proxy"""
+            from apps.menu.models import Product, Category
+
+            stats = {
+                'cache_info': self.get_cache_info(),
+                'total_products': Product.objects.filter(is_available=True).count(),
+                'total_categories': Category.objects.filter(is_active=True).count(),
+                'cache_hits': getattr(self, '_cache_hits', 0),
+                'cache_misses': getattr(self, '_cache_misses', 0)
+            }
+
+            return stats
+
+        def increment_cache_hit(self):
+            """Incrementar contador de hits"""
+            if not hasattr(self, '_cache_hits'):
+                self._cache_hits = 0
+            self._cache_hits += 1
+
+        def increment_cache_miss(self):
+            """Incrementar contador de misses"""
+            if not hasattr(self, '_cache_misses'):
+                self._cache_misses = 0
+            self._cache_misses += 1
+
+        # Modificar método get_menu para contar hits/misses:
+        def get_menu(self, force_refresh=False):
+            """
+            Obtener menú desde cache o BD (con estadísticas)
+            """
+            if force_refresh or self._is_cache_expired():
+                self.increment_cache_miss()
+                self._refresh_cache()
+            else:
+                self.increment_cache_hit()
+
+            return self._cache

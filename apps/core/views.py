@@ -1,12 +1,11 @@
 """
 Vistas para Facade y operaciones centrales
+Todas las operaciones ahora usan el Facade mejorado
 """
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
-from .facade import CafeteriaFacade
-from .config import get_config
-from .cache_proxy import MenuProxy
+from rest_framework import status as http_status
+from .facade import get_facade
 
 
 class RealizarPedidoCompletoView(APIView):
@@ -14,127 +13,223 @@ class RealizarPedidoCompletoView(APIView):
 
     def post(self, request):
         """
-        Realizar pedido completo: crear + notificar + enrutar
+        Realizar pedido completo integrado
 
         Body: {
             "customer_id": 1,
             "table_number": 5,
             "mesero_id": 2,
             "items": [
-                {"product_id": 1, "quantity": 2, "extras": {}},
-                {"product_id": 3, "quantity": 1}
-            ]
+                {
+                    "product_id": 1,
+                    "quantity": 2,
+                    "extras": {
+                        "leche": "deslactosada",
+                        "azucar": "sin_azucar"
+                    }
+                }
+            ],
+            "special_instructions": "Sin azúcar"
         }
         """
-        facade = CafeteriaFacade()
+        facade = get_facade()
 
-        result = facade.realizar_pedido_completo(
+        result = facade.crear_pedido_completo(
             customer_id=request.data['customer_id'],
             table_number=request.data['table_number'],
             items=request.data['items'],
-            mesero_id=request.data.get('mesero_id')
+            mesero_id=request.data.get('mesero_id'),
+            instructions=request.data.get('special_instructions', '')
         )
 
         if result['success']:
-            return Response(result, status=status.HTTP_201_CREATED)
+            return Response(result, status=http_status.HTTP_201_CREATED)
         else:
-            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+            return Response(result, status=http_status.HTTP_400_BAD_REQUEST)
 
 
 class CompletarOrdenView(APIView):
     """Completar orden (marcar como LISTO)"""
 
     def post(self, request, order_id):
-        facade = CafeteriaFacade()
+        facade = get_facade()
         result = facade.completar_orden(order_id)
 
         if result['success']:
             return Response(result)
         else:
-            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+            return Response(result, status=http_status.HTTP_400_BAD_REQUEST)
 
 
 class EntregarOrdenView(APIView):
     """Entregar orden (marcar como ENTREGADO)"""
 
     def post(self, request, order_id):
-        facade = CafeteriaFacade()
+        facade = get_facade()
         result = facade.entregar_orden(order_id)
 
         if result['success']:
             return Response(result)
         else:
-            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+            return Response(result, status=http_status.HTTP_400_BAD_REQUEST)
+
+
+class CancelarOrdenView(APIView):
+    """Cancelar orden"""
+
+    def post(self, request, order_id):
+        facade = get_facade()
+
+        result = facade.cancelar_orden(
+            order_id=order_id,
+            reason=request.data.get('reason', ''),
+            user_id=request.data.get('user_id')
+        )
+
+        if result['success']:
+            return Response(result)
+        else:
+            return Response(result, status=http_status.HTTP_400_BAD_REQUEST)
+
+
+class EditarOrdenView(APIView):
+    """Editar orden (solo si está PENDIENTE)"""
+
+    def put(self, request, order_id):
+        facade = get_facade()
+
+        result = facade.editar_orden(
+            order_id=order_id,
+            new_items=request.data.get('items'),
+            new_instructions=request.data.get('special_instructions')
+        )
+
+        if result['success']:
+            return Response(result)
+        else:
+            return Response(result, status=http_status.HTTP_400_BAD_REQUEST)
+
+
+class HistorialOrdenView(APIView):
+    """Obtener historial completo de una orden"""
+
+    def get(self, request, order_id):
+        facade = get_facade()
+        result = facade.obtener_historial_orden(order_id)
+
+        if result['success']:
+            return Response(result)
+        else:
+            return Response(result, status=http_status.HTTP_404_NOT_FOUND)
+
+
+class ResumenOrdenView(APIView):
+    """Obtener resumen completo de una orden"""
+
+    def get(self, request, order_id):
+        facade = get_facade()
+        result = facade.obtener_resumen_orden(order_id)
+
+        if result['success']:
+            return Response(result)
+        else:
+            return Response(result, status=http_status.HTTP_404_NOT_FOUND)
 
 
 class EstadoSistemaView(APIView):
     """Obtener estado general del sistema"""
 
     def get(self, request):
-        facade = CafeteriaFacade()
+        facade = get_facade()
         estado = facade.obtener_estado_sistema()
         return Response(estado)
 
 
-class ConfiguracionView(APIView):
-    """Obtener/actualizar configuración (Singleton)"""
+class EstadoCocinaView(APIView):
+    """Obtener estado de cocina"""
 
     def get(self, request):
-        """Obtener configuración actual"""
-        config = get_config()
-        return Response(config.get_config())
-
-    def patch(self, request):
-        """Actualizar configuración"""
-        config = get_config()
-        config.update_config(**request.data)
-        return Response({
-            'message': 'Configuración actualizada',
-            'config': config.get_config()
-        })
+        facade = get_facade()
+        result = facade.obtener_estado_cocina()
+        return Response(result)
 
 
-class MenuCachedView(APIView):
-    """Obtener menú desde cache (Proxy)"""
+class MenuActualView(APIView):
+    """Obtener menú actual"""
 
     def get(self, request):
-        """Obtener menú cacheado"""
-        proxy = MenuProxy()
-        force_refresh = request.query_params.get('refresh', 'false').lower() == 'true'
+        """
+        Query params:
+            - menu_type: 'standard', 'seasonal', 'quick'
+        """
+        facade = get_facade()
+        menu_type = request.query_params.get('menu_type', 'standard')
 
-        menu = proxy.get_menu(force_refresh=force_refresh)
-        cache_info = proxy.get_cache_info()
+        result = facade.obtener_menu_actual(menu_type)
 
-        return Response({
-            'menu': menu,
-            'cache_info': cache_info
-        })
-
-    def delete(self, request):
-        """Invalidar cache del menú"""
-        proxy = MenuProxy()
-        proxy.invalidate_cache()
-        return Response({
-            'message': 'Cache invalidado'
-        })
+        return Response(result)
 
 
-class BuscarProductoView(APIView):
-    """Buscar productos en cache"""
+class CambiarTemporadaView(APIView):
+    """Cambiar temporada del menú"""
 
-    def get(self, request):
-        query = request.query_params.get('q', '')
+    def post(self, request):
+        """
+        Body: {
+            "season": "INVIERNO" | "VERANO" | "OTONIO" | "PRIMAVERA" | "REGULAR"
+        }
+        """
+        facade = get_facade()
+        season = request.data.get('season')
 
-        if not query:
+        if not season:
             return Response({
-                'error': 'Parámetro "q" requerido'
-            }, status=status.HTTP_400_BAD_REQUEST)
+                'error': 'Temporada requerida'
+            }, status=http_status.HTTP_400_BAD_REQUEST)
 
-        proxy = MenuProxy()
-        results = proxy.search_products(query)
+        result = facade.cambiar_temporada(season)
 
-        return Response({
-            'query': query,
-            'results': results,
-            'count': len(results)
-        })
+        if result['success']:
+            return Response(result)
+        else:
+            return Response(result, status=http_status.HTTP_400_BAD_REQUEST)
+
+
+class NotificacionesUsuarioView(APIView):
+    """Obtener notificaciones de un usuario"""
+
+    def get(self, request, user_id):
+        facade = get_facade()
+        result = facade.obtener_notificaciones_usuario(user_id)
+
+        if result['success']:
+            return Response(result)
+        else:
+            return Response(result, status=http_status.HTTP_404_NOT_FOUND)
+
+
+class DeshacerAccionView(APIView):
+    """Deshacer última acción"""
+
+    def post(self, request):
+        facade = get_facade()
+        result = facade.deshacer_ultima_accion()
+        return Response(result)
+
+
+class RehacerAccionView(APIView):
+    """Rehacer acción"""
+
+    def post(self, request):
+        facade = get_facade()
+        result = facade.rehacer_accion()
+        return Response(result)
+
+
+class LimpiarSistemaView(APIView):
+    """Limpiar caches y datos temporales"""
+
+    def post(self, request):
+        facade = get_facade()
+        result = facade.limpiar_sistema()
+        return Response(result)

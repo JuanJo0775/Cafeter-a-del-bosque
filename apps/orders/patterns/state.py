@@ -1,22 +1,22 @@
 """
-Patrón STATE para gestionar ciclo de vida de órdenes
-PENDIENTE → EN_PREPARACION → LISTO → ENTREGADO
+STATE: Gestión completa del ciclo de vida de órdenes
+Con validaciones, transiciones automáticas y notificaciones
 """
 from abc import ABC, abstractmethod
 from datetime import datetime
 
 
 class OrderState(ABC):
-    """Estado abstracto de una orden"""
+    """Estado abstracto de una orden con validaciones"""
 
     @abstractmethod
     def handle(self, order):
-        """Manejar la orden en este estado"""
+        """Acciones al entrar en este estado"""
         pass
 
     @abstractmethod
     def next_state(self):
-        """Obtener siguiente estado"""
+        """Obtener siguiente estado posible"""
         pass
 
     @abstractmethod
@@ -24,25 +24,60 @@ class OrderState(ABC):
         """¿Se puede cancelar en este estado?"""
         pass
 
+    @abstractmethod
+    def can_edit(self):
+        """¿Se puede editar en este estado?"""
+        pass
+
+    def can_advance(self):
+        """¿Puede avanzar al siguiente estado?"""
+        return self.next_state() is not None
+
     def get_name(self):
         """Nombre del estado"""
-        return self.__class__.__name__.replace('State', '').upper()
+        return self.__class__.__name__.replace('State', '').replace('Order', '')
+
+    def get_allowed_actions(self):
+        """Acciones permitidas en este estado"""
+        actions = []
+        if self.can_advance():
+            actions.append('advance')
+        if self.can_cancel():
+            actions.append('cancel')
+        if self.can_edit():
+            actions.append('edit')
+        return actions
+
+    def validate_transition(self, order, next_state):
+        """Validar si la transición es permitida"""
+        return True
 
 
 class PendingState(OrderState):
-    """Estado: Orden recién creada, pendiente de preparación"""
+    """
+    PENDIENTE: Orden recién creada
+    Cliente puede editar/cancelar libremente
+    """
 
     def handle(self, order):
-        """Acciones cuando la orden está pendiente"""
-        print(f"[STATE] Orden #{order.id} está PENDIENTE. Esperando asignación a cocina.")
+        """Marcar como pendiente"""
+        print(f"[STATE] Orden #{order.id} → PENDIENTE")
         order.status = 'PENDIENTE'
         order.save()
 
+        # Crear snapshot automático
+        from apps.orders.patterns.memento import get_caretaker
+        caretaker = get_caretaker()
+        caretaker.save(order, tag="pending", reason="Orden creada")
+
     def next_state(self):
-        """Siguiente estado: En Preparación"""
+        """Siguiente: En Preparación"""
         return InPreparationState()
 
     def can_cancel(self):
+        return True
+
+    def can_edit(self):
         return True
 
     def get_name(self):
@@ -50,11 +85,14 @@ class PendingState(OrderState):
 
 
 class InPreparationState(OrderState):
-    """Estado: Orden asignada a cocina, en preparación"""
+    """
+    EN_PREPARACION: Orden enviada a cocina
+    Se puede cancelar pero NO editar
+    """
 
     def handle(self, order):
-        """Acciones cuando la orden está en preparación"""
-        print(f"[STATE] Orden #{order.id} EN_PREPARACION. Cocina trabajando.")
+        """Enviar a cocina"""
+        print(f"[STATE] Orden #{order.id} → EN_PREPARACION")
         order.status = 'EN_PREPARACION'
         order.save()
 
@@ -62,11 +100,27 @@ class InPreparationState(OrderState):
         from apps.notifications.services import NotificationService
         NotificationService.notify_kitchen(order)
 
+        # Crear snapshot
+        from apps.orders.patterns.memento import get_caretaker
+        caretaker = get_caretaker()
+        caretaker.save(order, tag="in_preparation", reason="Enviada a cocina")
+
+        print(f"[STATE] ✓ Orden #{order.id} enviada a cocina - {order.items.count()} items")
+
     def next_state(self):
-        """Siguiente estado: Listo"""
+        """Siguiente: Listo"""
         return ReadyState()
 
     def can_cancel(self):
+        return True
+
+    def can_edit(self):
+        return False  # NO se puede editar en preparación
+
+    def validate_transition(self, order, next_state):
+        """Validar que hay items antes de avanzar"""
+        if order.items.count() == 0:
+            raise ValueError("La orden no tiene items")
         return True
 
     def get_name(self):
@@ -74,11 +128,14 @@ class InPreparationState(OrderState):
 
 
 class ReadyState(OrderState):
-    """Estado: Orden lista para servir"""
+    """
+    LISTO: Orden preparada, esperando entrega
+    NO se puede cancelar ni editar
+    """
 
     def handle(self, order):
-        """Acciones cuando la orden está lista"""
-        print(f"[STATE] Orden #{order.id} LISTA. Notificando mesero.")
+        """Marcar como lista"""
+        print(f"[STATE] Orden #{order.id} → LISTO")
         order.status = 'LISTO'
         order.prepared_at = datetime.now()
         order.save()
@@ -87,11 +144,21 @@ class ReadyState(OrderState):
         from apps.notifications.services import NotificationService
         NotificationService.notify_waiter(order)
 
+        # Crear snapshot
+        from apps.orders.patterns.memento import get_caretaker
+        caretaker = get_caretaker()
+        caretaker.save(order, tag="ready", reason="Orden lista para servir")
+
+        print(f"[STATE] ✓ Orden #{order.id} lista para servir")
+
     def next_state(self):
-        """Siguiente estado: Entregado"""
+        """Siguiente: Entregado"""
         return DeliveredState()
 
     def can_cancel(self):
+        return False  # Ya no se puede cancelar
+
+    def can_edit(self):
         return False
 
     def get_name(self):
@@ -99,20 +166,33 @@ class ReadyState(OrderState):
 
 
 class DeliveredState(OrderState):
-    """Estado: Orden entregada al cliente"""
+    """
+    ENTREGADO: Orden entregada al cliente
+    Estado final - NO se puede modificar
+    """
 
     def handle(self, order):
-        """Acciones cuando la orden es entregada"""
-        print(f"[STATE] Orden #{order.id} ENTREGADA. Proceso completado.")
+        """Marcar como entregada"""
+        print(f"[STATE] Orden #{order.id} → ENTREGADO")
         order.status = 'ENTREGADO'
         order.delivered_at = datetime.now()
         order.save()
 
+        # Snapshot final
+        from apps.orders.patterns.memento import get_caretaker
+        caretaker = get_caretaker()
+        caretaker.save(order, tag="delivered", reason="Orden entregada al cliente")
+
+        print(f"[STATE] ✓ Orden #{order.id} completada exitosamente")
+
     def next_state(self):
-        """Estado final, no hay siguiente"""
+        """Estado final - no hay siguiente"""
         return None
 
     def can_cancel(self):
+        return False
+
+    def can_edit(self):
         return False
 
     def get_name(self):
@@ -120,19 +200,32 @@ class DeliveredState(OrderState):
 
 
 class CancelledState(OrderState):
-    """Estado: Orden cancelada"""
+    """
+    CANCELADO: Orden cancelada
+    Estado final - NO se puede modificar
+    """
 
     def handle(self, order):
-        """Acciones cuando la orden es cancelada"""
-        print(f"[STATE] Orden #{order.id} CANCELADA.")
+        """Marcar como cancelada"""
+        print(f"[STATE] Orden #{order.id} → CANCELADO")
         order.status = 'CANCELADO'
         order.save()
 
+        # Snapshot de cancelación
+        from apps.orders.patterns.memento import get_caretaker
+        caretaker = get_caretaker()
+        caretaker.save(order, tag="cancelled", reason="Orden cancelada")
+
+        print(f"[STATE] ✓ Orden #{order.id} cancelada")
+
     def next_state(self):
-        """Estado final, no hay siguiente"""
+        """Estado final - no hay siguiente"""
         return None
 
     def can_cancel(self):
+        return False
+
+    def can_edit(self):
         return False
 
     def get_name(self):
@@ -141,8 +234,8 @@ class CancelledState(OrderState):
 
 class OrderStateManager:
     """
-    Gestor de estados de órdenes
-    Coordina transiciones entre estados
+    Gestor centralizado de estados de órdenes
+    Coordina transiciones y validaciones
     """
 
     # Mapeo de estados
@@ -162,7 +255,7 @@ class OrderStateManager:
     @classmethod
     def advance_order(cls, order):
         """
-        Avanzar orden al siguiente estado
+        Avanzar orden al siguiente estado con validaciones
 
         Args:
             order: instancia de Order
@@ -176,32 +269,72 @@ class OrderStateManager:
         if next_state is None:
             raise ValueError(f"La orden está en estado final: {order.status}")
 
+        print(f"[STATE MANAGER] Avanzando orden #{order.id}: {current_state.get_name()} → {next_state.get_name()}")
+
+        # Validar transición
+        try:
+            current_state.validate_transition(order, next_state)
+        except ValueError as e:
+            print(f"[STATE MANAGER] ✗ Transición inválida: {e}")
+            raise
+
         # Aplicar nuevo estado
         next_state.handle(order)
 
+        print(f"[STATE MANAGER] ✓ Orden #{order.id} avanzada exitosamente")
         return next_state
 
     @classmethod
-    def cancel_order(cls, order):
+    def cancel_order(cls, order, reason=""):
         """Cancelar orden si es posible"""
         current_state = cls.get_state(order)
 
         if not current_state.can_cancel():
             raise ValueError(f"No se puede cancelar orden en estado {order.status}")
 
+        print(f"[STATE MANAGER] Cancelando orden #{order.id} - Razón: {reason}")
+
         cancelled_state = CancelledState()
         cancelled_state.handle(order)
 
+        print(f"[STATE MANAGER] ✓ Orden #{order.id} cancelada")
         return cancelled_state
 
     @classmethod
     def can_advance(cls, order):
         """Verificar si la orden puede avanzar"""
         current_state = cls.get_state(order)
-        return current_state.next_state() is not None
+        return current_state.can_advance()
 
     @classmethod
     def can_cancel(cls, order):
         """Verificar si la orden puede ser cancelada"""
         current_state = cls.get_state(order)
         return current_state.can_cancel()
+
+    @classmethod
+    def can_edit(cls, order):
+        """Verificar si la orden puede ser editada"""
+        current_state = cls.get_state(order)
+        return current_state.can_edit()
+
+    @classmethod
+    def get_allowed_actions(cls, order):
+        """Obtener acciones permitidas para la orden"""
+        current_state = cls.get_state(order)
+        return current_state.get_allowed_actions()
+
+    @classmethod
+    def get_state_info(cls, order):
+        """Obtener información completa del estado"""
+        current_state = cls.get_state(order)
+
+        return {
+            'order_id': order.id,
+            'current_state': current_state.get_name(),
+            'can_advance': cls.can_advance(order),
+            'can_cancel': cls.can_cancel(order),
+            'can_edit': cls.can_edit(order),
+            'allowed_actions': current_state.get_allowed_actions(),
+            'next_state': current_state.next_state().get_name() if current_state.next_state() else None
+        }

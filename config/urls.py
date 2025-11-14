@@ -13,6 +13,7 @@ urlpatterns = [
     path('api/orders/', include('apps.orders.urls')),
     path('api/kitchen/', include('apps.kitchen.urls')),
     path('api/core/', include('apps.core.urls')),
+    path('api/notifications/', include('apps.notifications.urls')),
 
     path('', lambda request: redirect('/admin/')),
 ]
