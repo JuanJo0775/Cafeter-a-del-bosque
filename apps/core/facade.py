@@ -4,6 +4,9 @@ Integra todos los patrones y subsistemas
 """
 from datetime import datetime
 
+# Añadido para mejoras SIN eliminar nada
+from apps.core.service_registry import get_registry
+
 from apps.users.models import User
 from apps.menu.models import Product
 from apps.orders.models import Order
@@ -25,8 +28,13 @@ class CafeteriaFacade:
     """
 
     def __init__(self):
-        self.kitchen_router = KitchenRouter()
-        self.command_invoker = CommandInvoker()
+        # 🔹 Integración con registry, sin eliminar tu lógica
+        registry = get_registry()
+
+        # Mantengo tus instancias, agrego opción de obtenerlas del registry
+        self.kitchen_router = registry.kitchen if hasattr(registry, "kitchen") else KitchenRouter()
+        self.command_invoker = registry.orders.command_invoker if hasattr(registry, "orders") else CommandInvoker()
+
         self.caretaker = get_caretaker()
         print("[FACADE] Sistema inicializado")
 
@@ -35,23 +43,6 @@ class CafeteriaFacade:
     def crear_pedido_completo(self, customer_id, table_number, items, mesero_id=None, instructions=""):
         """
         Operación completa: crear pedido con todos los patrones integrados
-
-        - Builder: construir orden
-        - Command: encapsular creación
-        - State: establecer estado inicial
-        - Memento: guardar snapshot
-        - Observer: notificar cocina
-        - Chain: enrutar a estaciones
-
-        Args:
-            customer_id: ID del cliente
-            table_number: número de mesa
-            items: lista de items
-            mesero_id: ID del mesero (opcional)
-            instructions: instrucciones especiales
-
-        Returns:
-            dict con resultado completo
         """
         print(f"\n[FACADE] ========== CREAR PEDIDO COMPLETO ==========")
 
@@ -65,7 +56,7 @@ class CafeteriaFacade:
             if mesero:
                 NotificationService.register_waiter(mesero)
 
-            # 2. Construir orden usando Builder + Director
+            # 2. Builder
             director = OrderDirector()
             builder = OrderBuilder()
 
@@ -79,18 +70,20 @@ class CafeteriaFacade:
 
             print(f"[FACADE] ✓ Orden #{order.id} construida")
 
-            # 3. Procesar con Template Method
+            # 3. Template Method
             template = get_order_process_template('new')
             process_result = template.process_order(order)
 
             if not process_result['success']:
                 return process_result
 
-            # 4. Avanzar a EN_PREPARACION usando State
+            # 4. State
             OrderStateManager.advance_order(order)
 
-            # 5. Enrutar a cocina usando Chain of Responsibility
-            assignments = self.kitchen_router.route_order(order)
+            # 5. Chain of Responsibility (Kitchen)
+            registry = get_registry()
+            kitchen = registry.kitchen if hasattr(registry, "kitchen") else self.kitchen_router
+            assignments = kitchen.route_order(order)
 
             print(f"[FACADE] ========== PEDIDO COMPLETADO ==========\n")
 
@@ -118,24 +111,18 @@ class CafeteriaFacade:
     def completar_orden(self, order_id):
         """
         Marcar orden como LISTA
-
-        - State: avanzar estado
-        - Template Method: procesar
-        - Observer: notificar mesero
         """
         print(f"\n[FACADE] ========== COMPLETAR ORDEN #{order_id} ==========")
 
         try:
             order = Order.objects.get(id=order_id)
 
-            # Procesar con template
+            # Template Method
             template = get_order_process_template('ready')
             result = template.process_order(order)
 
             if result['success']:
-                # Avanzar estado
                 OrderStateManager.advance_order(order)
-
                 print(f"[FACADE] ========== ORDEN COMPLETADA ==========\n")
 
             return {
@@ -153,24 +140,17 @@ class CafeteriaFacade:
     def entregar_orden(self, order_id):
         """
         Marcar orden como ENTREGADA
-
-        - State: avanzar a entregado
-        - Template Method: procesar entrega
-        - Observer: notificar cliente
         """
         print(f"\n[FACADE] ========== ENTREGAR ORDEN #{order_id} ==========")
 
         try:
             order = Order.objects.get(id=order_id)
 
-            # Procesar con template
             template = get_order_process_template('delivered')
             result = template.process_order(order)
 
             if result['success']:
-                # Avanzar estado
                 OrderStateManager.advance_order(order)
-
                 print(f"[FACADE] ========== ORDEN ENTREGADA ==========\n")
 
             return {
@@ -188,11 +168,6 @@ class CafeteriaFacade:
     def cancelar_orden(self, order_id, reason="", user_id=None):
         """
         Cancelar orden completa
-
-        - Command: encapsular cancelación
-        - State: cambiar a cancelado
-        - Template Method: procesar cancelación
-        - Observer: notificar todos
         """
         print(f"\n[FACADE] ========== CANCELAR ORDEN #{order_id} ==========")
 
@@ -200,19 +175,16 @@ class CafeteriaFacade:
             order = Order.objects.get(id=order_id)
             user = User.objects.get(id=user_id) if user_id else None
 
-            # Verificar si se puede cancelar
             if not OrderStateManager.can_cancel(order):
                 return {
                     'success': False,
                     'error': f'No se puede cancelar orden en estado {order.status}'
                 }
 
-            # Procesar con template
             template = get_order_process_template('cancelled')
             result = template.process_order(order)
 
             if result['success']:
-                # Ejecutar comando de cancelación
                 command = CancelOrderCommand(order, reason, user)
                 self.command_invoker.execute_command(command)
 
@@ -234,58 +206,43 @@ class CafeteriaFacade:
     def editar_orden(self, order_id, new_items=None, new_instructions=None):
         """
         Editar orden (solo si está PENDIENTE)
-
-        - State: verificar estado
-        -Command: agregar/remover items
-        - Memento: guardar estado antes de editar
-        - Observer: notificar modificación
         """
         print(f"\n[FACADE] ========== EDITAR ORDEN #{order_id} ==========")
 
         try:
             order = Order.objects.get(id=order_id)
 
-            # Verificar si se puede editar
             if not OrderStateManager.can_edit(order):
                 return {
                     'success': False,
                     'error': f'No se puede editar orden en estado {order.status}'
                 }
 
-            # Guardar snapshot antes de editar
             self.caretaker.save(order, tag="before_edit", reason="Antes de edición")
 
-            # Editar instrucciones
             if new_instructions is not None:
                 order.special_instructions = new_instructions
                 order.save()
 
-            # Editar items si se proporcionaron
             if new_items:
                 from apps.orders.patterns.command import RemoveItemCommand, AddItemCommand
-
-                # Remover items existentes
                 for item in order.items.all():
-                    command = RemoveItemCommand(order, item.id)
-                    self.command_invoker.execute_command(command)
+                    self.command_invoker.execute_command(RemoveItemCommand(order, item.id))
 
-                # Agregar nuevos items
                 for item_data in new_items:
-                    command = AddItemCommand(
-                        order,
-                        item_data['product_id'],
-                        item_data.get('quantity', 1),
-                        item_data.get('extras', {})
+                    self.command_invoker.execute_command(
+                        AddItemCommand(
+                            order,
+                            item_data['product_id'],
+                            item_data.get('quantity', 1),
+                            item_data.get('extras', {})
+                        )
                     )
-                    self.command_invoker.execute_command(command)
 
-            # Recalcular total
             order.calculate_total()
 
-            # Notificar modificación
             NotificationService.notify_order_modified(order)
 
-            # Guardar snapshot después de editar
             self.caretaker.save(order, tag="after_edit", reason="Después de edición")
 
             print(f"[FACADE] ========== ORDEN EDITADA ==========\n")
@@ -307,20 +264,12 @@ class CafeteriaFacade:
     def obtener_historial_orden(self, order_id):
         """
         Obtener historial completo de una orden
-
-        - Memento: obtener snapshots
-        - Command: obtener historial de comandos
         """
         try:
             order = Order.objects.get(id=order_id)
-
-            # Historial de mementos
             mementos = self.caretaker.get_history(order_id)
-
-            # Historial de comandos
             commands = self.command_invoker.get_history()
 
-            # Historial de cambios en BD
             from apps.orders.models import OrderHistory
             db_history = OrderHistory.objects.filter(order=order).order_by('-timestamp')
 
@@ -343,29 +292,28 @@ class CafeteriaFacade:
     def obtener_menu_actual(self, menu_type='standard'):
         """
         Obtener menú actual usando Singleton + Template Method + Proxy
-
-        Args:
-            menu_type: 'standard', 'seasonal', 'quick'
-
-        Returns:
-            dict con menú completo
         """
         print(f"\n[FACADE] ========== OBTENER MENÚ ({menu_type}) ==========")
 
         try:
-            # Obtener temporada actual desde Singleton
             from apps.menu.singletons.menu_singleton import get_menu_singleton
             menu_singleton = get_menu_singleton()
             current_season = menu_singleton.get_current_season()
 
-            # Construir menú usando Template Method
             template = get_menu_build_template(menu_type)
             menu = template.build_menu(season=current_season)
 
-            # Cachear usando Proxy
-            from apps.core.cache_proxy import MenuProxy
-            proxy = MenuProxy()
-            cache_info = proxy.get_cache_info()
+            # 🔹 Usar registry.menu si tiene proxy interno
+            registry = get_registry()
+            menu_service = getattr(registry, "menu", None)
+
+            if menu_service and hasattr(menu_service, "get_cache_info"):
+                cache_info = menu_service.get_cache_info()
+            else:
+                # fallback: tu implementación original
+                from apps.core.cache_proxy import MenuProxy
+                proxy = MenuProxy()
+                cache_info = proxy.get_cache_info()
 
             print(f"[FACADE] ========== MENÚ OBTENIDO ==========\n")
 
@@ -382,24 +330,23 @@ class CafeteriaFacade:
     def cambiar_temporada(self, new_season):
         """
         Cambiar temporada del menú usando Singleton + Strategy
-
-        Args:
-            new_season: 'REGULAR', 'INVIERNO', 'VERANO', 'OTONIO', 'PRIMAVERA'
         """
         print(f"\n[FACADE] ========== CAMBIAR TEMPORADA ==========")
 
         try:
-            # Actualizar singleton
             from apps.menu.singletons.menu_singleton import get_menu_singleton
             menu_singleton = get_menu_singleton()
             menu_singleton.set_season(new_season)
 
-            # Invalidar cache del proxy
-            from apps.core.cache_proxy import MenuProxy
-            proxy = MenuProxy()
-            proxy.invalidate_cache()
+            registry = get_registry()
+            menu_service = getattr(registry, "menu", None)
 
-            # Obtener nuevo menú
+            if menu_service and hasattr(menu_service, "invalidate_cache"):
+                menu_service.invalidate_cache()
+            else:
+                from apps.core.cache_proxy import MenuProxy
+                MenuProxy().invalidate_cache()
+
             menu = menu_singleton.get_complete_menu()
 
             print(f"[FACADE] ========== TEMPORADA CAMBIADA ==========\n")
@@ -418,20 +365,15 @@ class CafeteriaFacade:
     def obtener_estado_cocina(self):
         """
         Obtener estado completo de cocina
-
-        - Chain: estado de estaciones
-        - Observer: notificaciones de cocina
         """
         print(f"\n[FACADE] ========== ESTADO DE COCINA ==========")
 
         try:
-            # Estado de estaciones
-            stations_status = self.kitchen_router.get_station_status()
+            registry = get_registry()
+            kitchen = registry.kitchen if hasattr(registry, "kitchen") else self.kitchen_router
 
-            # Notificaciones de cocina
+            stations_status = kitchen.get_station_status()
             kitchen_notifications = NotificationService.get_kitchen_notifications()
-
-            # Órdenes en preparación
             orders_in_prep = Order.objects.filter(status='EN_PREPARACION').count()
 
             print(f"[FACADE] ========== ESTADO OBTENIDO ==========\n")
@@ -454,15 +396,14 @@ class CafeteriaFacade:
     def completar_item_estacion(self, station_type, order_id):
         """
         Marcar item como completado en una estación
-
-        Args:
-            station_type: tipo de estación
-            order_id: ID de la orden
         """
         print(f"\n[FACADE] ========== COMPLETAR ITEM EN ESTACIÓN ==========")
 
         try:
-            success = self.kitchen_router.complete_station_item(station_type, order_id)
+            registry = get_registry()
+            kitchen = registry.kitchen if hasattr(registry, "kitchen") else self.kitchen_router
+
+            success = kitchen.complete_station_item(station_type, order_id)
 
             if success:
                 print(f"[FACADE] ========== ITEM COMPLETADO ==========\n")
@@ -486,9 +427,6 @@ class CafeteriaFacade:
     def obtener_notificaciones_usuario(self, user_id):
         """
         Obtener notificaciones de un usuario
-
-        Args:
-            user_id: ID del usuario
         """
         try:
             user = User.objects.get(id=user_id)
@@ -518,12 +456,6 @@ class CafeteriaFacade:
     def enviar_notificacion_personalizada(self, recipient, message, channels=None, priority='normal'):
         """
         Enviar notificación usando Strategy
-
-        Args:
-            recipient: destinatario
-            message: mensaje
-            channels: lista de canales
-            priority: prioridad
         """
         result = NotificationManager.send_multi_channel(
             recipient=recipient,
@@ -532,23 +464,19 @@ class CafeteriaFacade:
             priority=priority
         )
 
-        return {
-            'success': True,
-            'results': result
-        }
+        return {'success': True, 'results': result}
 
     # ========== OPERACIONES DE ESTADO DEL SISTEMA ==========
 
     def obtener_estado_sistema(self):
         """
-        Obtener vista general completa del sistema
+        Obtener vista general del sistema
         """
         print(f"\n[FACADE] ========== ESTADO DEL SISTEMA ==========")
 
         try:
             from datetime import date
 
-            # Estadísticas de órdenes
             orders_stats = {
                 'pendientes': Order.objects.filter(status='PENDIENTE').count(),
                 'en_preparacion': Order.objects.filter(status='EN_PREPARACION').count(),
@@ -563,21 +491,22 @@ class CafeteriaFacade:
                 ).count()
             }
 
-            # Estado de cocina
             kitchen_status = self.obtener_estado_cocina()
-
-            # Estado de notificaciones
             notification_stats = NotificationService.get_service_stats()
 
-            # Menú actual
             from apps.menu.singletons.menu_singleton import get_menu_singleton
             menu_singleton = get_menu_singleton()
             menu_info = menu_singleton.get_info()
 
-            # Cache info
-            from apps.core.cache_proxy import MenuProxy
-            proxy = MenuProxy()
-            cache_info = proxy.get_cache_info()
+            # 🔹 Integración con registry para cache
+            registry = get_registry()
+            menu_service = getattr(registry, "menu", None)
+
+            if menu_service and hasattr(menu_service, "get_cache_info"):
+                cache_info = menu_service.get_cache_info()
+            else:
+                from apps.core.cache_proxy import MenuProxy
+                cache_info = MenuProxy().get_cache_info()
 
             print(f"[FACADE] ========== ESTADO OBTENIDO ==========\n")
 
@@ -601,7 +530,6 @@ class CafeteriaFacade:
         try:
             order = Order.objects.get(id=order_id)
 
-            # Info básica
             basic_info = {
                 'id': order.id,
                 'table': order.table_number,
@@ -612,7 +540,6 @@ class CafeteriaFacade:
                 'total': float(order.total_price)
             }
 
-            # Items con decoradores aplicados
             items = []
             for item in order.items.all():
                 from apps.menu.decorators.product_decorator import DecoratorFactory
@@ -627,10 +554,7 @@ class CafeteriaFacade:
                     'extras': item.extras
                 })
 
-            # Estado
             state_info = OrderStateManager.get_state_info(order)
-
-            # Historial resumido
             history = self.caretaker.get_history(order_id)
 
             return {
@@ -649,10 +573,9 @@ class CafeteriaFacade:
 
     def deshacer_ultima_accion(self):
         """
-        Deshacer última acción usando Command
+        Deshacer última acción
         """
         success = self.command_invoker.undo()
-
         return {
             'success': success,
             'message': 'Acción deshecha' if success else 'No hay acciones para deshacer'
@@ -660,10 +583,9 @@ class CafeteriaFacade:
 
     def rehacer_accion(self):
         """
-        Rehacer acción usando Command
+        Rehacer acción
         """
         success = self.command_invoker.redo()
-
         return {
             'success': success,
             'message': 'Acción rehecha' if success else 'No hay acciones para rehacer'
@@ -675,15 +597,20 @@ class CafeteriaFacade:
         """
         print(f"\n[FACADE] ========== LIMPIANDO SISTEMA ==========")
 
-        # Limpiar cache
-        from apps.core.cache_proxy import MenuProxy
-        proxy = MenuProxy()
-        proxy.invalidate_cache()
+        # Cache
+        registry = get_registry()
+        menu_service = getattr(registry, "menu", None)
 
-        # Limpiar notificaciones
+        if menu_service and hasattr(menu_service, "invalidate_cache"):
+            menu_service.invalidate_cache()
+        else:
+            from apps.core.cache_proxy import MenuProxy
+            MenuProxy().invalidate_cache()
+
+        # Notificaciones
         NotificationService.clear_all_notifications()
 
-        # Limpiar historial de comandos
+        # Historial de comandos
         self.command_invoker.clear_history()
 
         print(f"[FACADE] ========== SISTEMA LIMPIADO ==========\n")

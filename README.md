@@ -39,7 +39,14 @@ python manage.py migrate
 ### 5. Cargar Datos de Prueba
 
 ```bash
-Get-Content .\scripts\init_data.py | python manage.py shell
+#Simular:
+python manage.py init_data --dry-run --seed-users
+
+#Ejecutar real y crear usuarios/estaciones/productos de ejemplo:
+python manage.py init_data --seed-users
+
+#Forzar (en caso de que quieras actualizar defaults):
+python manage.py init_data --force --seed-users
 ```
 
 ### 6. Ejecutar Servidor

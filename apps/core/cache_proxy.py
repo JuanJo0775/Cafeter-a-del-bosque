@@ -16,25 +16,34 @@ class MenuProxy:
     _cache_timestamp = None
     _cache_duration = timedelta(minutes=15)  # Cache válido por 15 minutos
 
+    # Estadísticas internas
+    _cache_hits = 0
+    _cache_misses = 0
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
 
+    # ==============================================================
+    # MÉTODO PRINCIPAL: obtener menú (con estadísticas)
+    # ==============================================================
+
     def get_menu(self, force_refresh=False):
         """
-        Obtener menú desde cache o BD
-
-        Args:
-            force_refresh: Forzar recarga desde BD
-
-        Returns:
-            dict con estructura del menú
+        Obtener menú desde cache o BD (con estadísticas)
         """
         if force_refresh or self._is_cache_expired():
+            self.increment_cache_miss()
             self._refresh_cache()
+        else:
+            self.increment_cache_hit()
 
         return self._cache
+
+    # ==============================================================
+    # UTILIDADES INTERNAS
+    # ==============================================================
 
     def _is_cache_expired(self):
         """Verificar si el cache expiró"""
@@ -81,6 +90,10 @@ class MenuProxy:
         self._cache_timestamp = None
         print("[PROXY] Cache invalidado")
 
+    # ==============================================================
+    # INFORMACIÓN Y ESTADÍSTICAS DEL CACHE
+    # ==============================================================
+
     def get_cache_info(self):
         """Obtener información del estado del cache"""
         if self._cache_timestamp:
@@ -97,6 +110,32 @@ class MenuProxy:
             'expires_in_seconds': 0,
             'items_count': 0
         }
+
+    def get_statistics(self):
+        """Obtener estadísticas del proxy"""
+        return {
+            'cache_info': self.get_cache_info(),
+            'total_products': Product.objects.filter(is_available=True).count(),
+            'total_categories': Category.objects.count(),
+            'cache_hits': self._cache_hits,
+            'cache_misses': self._cache_misses
+        }
+
+    # ==============================================================
+    # CONTADORES DE HITS Y MISSES
+    # ==============================================================
+
+    def increment_cache_hit(self):
+        """Incrementar contador de hits"""
+        self._cache_hits += 1
+
+    def increment_cache_miss(self):
+        """Incrementar contador de misses"""
+        self._cache_misses += 1
+
+    # ==============================================================
+    # BÚSQUEDA EN CACHE
+    # ==============================================================
 
     def search_products(self, query):
         """
@@ -124,44 +163,3 @@ class MenuProxy:
                     })
 
         return results
-
-        # AGREGAR estos métodos a la clase MenuProxy existente:
-
-        def get_statistics(self):
-            """Obtener estadísticas del proxy"""
-            from apps.menu.models import Product, Category
-
-            stats = {
-                'cache_info': self.get_cache_info(),
-                'total_products': Product.objects.filter(is_available=True).count(),
-                'total_categories': Category.objects.filter(is_active=True).count(),
-                'cache_hits': getattr(self, '_cache_hits', 0),
-                'cache_misses': getattr(self, '_cache_misses', 0)
-            }
-
-            return stats
-
-        def increment_cache_hit(self):
-            """Incrementar contador de hits"""
-            if not hasattr(self, '_cache_hits'):
-                self._cache_hits = 0
-            self._cache_hits += 1
-
-        def increment_cache_miss(self):
-            """Incrementar contador de misses"""
-            if not hasattr(self, '_cache_misses'):
-                self._cache_misses = 0
-            self._cache_misses += 1
-
-        # Modificar método get_menu para contar hits/misses:
-        def get_menu(self, force_refresh=False):
-            """
-            Obtener menú desde cache o BD (con estadísticas)
-            """
-            if force_refresh or self._is_cache_expired():
-                self.increment_cache_miss()
-                self._refresh_cache()
-            else:
-                self.increment_cache_hit()
-
-            return self._cache
