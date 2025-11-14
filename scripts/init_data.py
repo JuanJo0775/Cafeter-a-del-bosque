@@ -1,307 +1,245 @@
 """
-Script para inicializar datos de prueba
+Script para inicializar datos de prueba del sistema Cafetería del Bosque
 Ejecutar: python manage.py shell < scripts/init_data.py
 """
+
 from apps.users.models import User
 from apps.menu.models import Category, Product
 from apps.kitchen.models import KitchenStation
 
-print("Inicializando datos de prueba...")
+print("=" * 60)
+print(" Inicializando datos del sistema Cafetería del Bosque ")
+print("=" * 60)
 
-# 1. Crear usuarios
-print("\n1. Creando usuarios...")
+# ==========================================================
+# 1. CREAR USUARIOS
+# ==========================================================
+print("\n1) Creando usuarios...\n")
 
-# Admin
-admin, _ = User.objects.get_or_create(
-    username='admin',
-    defaults={
-        'email': 'admin@cafedelbosque.com',
-        'role': 'ADMIN',
-        'is_staff': True,
-        'is_superuser': True
-    }
-)
-admin.set_password('admin123')
-admin.save()
-print("✓ Admin creado")
+# --- Superusuario (admin del sistema) ---
+if not User.objects.filter(username='admin').exists():
+    admin = User.objects.create_superuser(
+        username="admin",
+        email="admin@cafedelbosque.com",
+        password="admin123"
+    )
+    admin.role = "ADMIN"
+    admin.save()
+    print("✓ Superusuario creado")
+else:
+    print("✓ Superusuario ya existe")
 
-# Meseros
-mesero1, _ = User.objects.get_or_create(
-    username='maria_mesera',
-    defaults={
-        'email': 'maria@cafedelbosque.com',
-        'role': 'MESERO',
-        'first_name': 'María',
-        'last_name': 'González'
-    }
-)
-mesero1.set_password('mesero123')
-mesero1.save()
+# --- Meseros ---
+meseros_data = [
+    ("maria_mesera", "María", "González", "maria@cafedelbosque.com"),
+    ("juan_mesero", "Juan", "Pérez", "juan@cafedelbosque.com"),
+]
 
-mesero2, _ = User.objects.get_or_create(
-    username='juan_mesero',
-    defaults={
-        'email': 'juan@cafedelbosque.com',
-        'role': 'MESERO',
-        'first_name': 'Juan',
-        'last_name': 'Pérez'
-    }
-)
-mesero2.set_password('mesero123')
-mesero2.save()
-print("✓ 2 Meseros creados")
+for username, fname, lname, email in meseros_data:
+    user, created = User.objects.get_or_create(
+        username=username,
+        defaults={
+            "first_name": fname,
+            "last_name": lname,
+            "email": email,
+            "role": "MESERO"
+        }
+    )
+    user.set_password("mesero123")
+    user.save()
 
-# Cocineros
-cocinero, _ = User.objects.get_or_create(
-    username='carlos_chef',
-    defaults={
-        'email': 'carlos@cafedelbosque.com',
-        'role': 'COCINERO',
-        'first_name': 'Carlos',
-        'last_name': 'Rodríguez'
-    }
-)
-cocinero.set_password('chef123')
-cocinero.save()
-print("✓ Cocinero creado")
+print("✓ Meseros creados")
 
-# Clientes
-cliente1, _ = User.objects.get_or_create(
-    username='ana_cliente',
-    defaults={
-        'email': 'ana@email.com',
-        'role': 'CLIENTE',
-        'first_name': 'Ana',
-        'last_name': 'Martínez'
-    }
-)
-cliente1.set_password('cliente123')
-cliente1.save()
+# --- Cocineros ---
+cocineros_data = [
+    ("carlos_chef", "Carlos", "Rodríguez", "carlos@cafedelbosque.com"),
+    ("laura_chef", "Laura", "Ramírez", "laura@cafedelbosque.com"),
+]
 
-cliente2, _ = User.objects.get_or_create(
-    username='pedro_cliente',
-    defaults={
-        'email': 'pedro@email.com',
-        'role': 'CLIENTE',
-        'first_name': 'Pedro',
-        'last_name': 'López'
-    }
-)
-cliente2.set_password('cliente123')
-cliente2.save()
-print("✓ 2 Clientes creados")
+for username, fname, lname, email in cocineros_data:
+    user, created = User.objects.get_or_create(
+        username=username,
+        defaults={
+            "first_name": fname,
+            "last_name": lname,
+            "email": email,
+            "role": "COCINERO"
+        }
+    )
+    user.set_password("chef123")
+    user.save()
 
-# 2. Crear categorías
-print("\n2. Creando categorías...")
+print("✓ Cocineros creados")
 
-cat_bebidas, _ = Category.objects.get_or_create(
-    name='Bebidas Calientes',
-    defaults={'category_type': 'BEBIDAS', 'description': 'Café, té y chocolate'}
-)
+# --- Clientes ---
+clientes_data = [
+    ("ana_cliente", "Ana", "Martínez", "ana@email.com"),
+    ("pedro_cliente", "Pedro", "López", "pedro@email.com"),
+    ("sofia_cliente", "Sofía", "Ramírez", "sofia@email.com"),
+]
 
-cat_bebidas_frias, _ = Category.objects.get_or_create(
-    name='Bebidas Frías',
-    defaults={'category_type': 'BEBIDAS', 'description': 'Jugos y batidos'}
-)
+for username, fname, lname, email in clientes_data:
+    user, created = User.objects.get_or_create(
+        username=username,
+        defaults={
+            "first_name": fname,
+            "last_name": lname,
+            "email": email,
+            "role": "CLIENTE"
+        }
+    )
+    user.set_password("cliente123")
+    user.save()
 
-cat_entradas, _ = Category.objects.get_or_create(
-    name='Entradas',
-    defaults={'category_type': 'ENTRADAS', 'description': 'Panes y acompañamientos'}
-)
+print("✓ Clientes creados")
 
-cat_comidas, _ = Category.objects.get_or_create(
-    name='Comidas',
-    defaults={'category_type': 'COMIDAS', 'description': 'Platos principales'}
-)
 
-cat_postres, _ = Category.objects.get_or_create(
-    name='Postres',
-    defaults={'category_type': 'POSTRES', 'description': 'Dulces y postres'}
-)
-print("✓ 5 Categorías creadas")
+# ==========================================================
+# 2. CATEGORÍAS DEL MENÚ
+# ==========================================================
+print("\n2) Creando categorías...\n")
 
-# 3. Crear productos
-print("\n3. Creando productos...")
+cat_bebidas_c = Category.objects.get_or_create(
+    name="Bebidas Calientes",
+    defaults={"category_type": "BEBIDAS", "description": "Café, té y chocolate caliente"}
+)[0]
 
-# Bebidas calientes
-Product.objects.get_or_create(
-    name='Café Americano',
-    category=cat_bebidas,
-    defaults={
-        'description': 'Café negro tradicional',
-        'base_price': 3.50,
-        'preparation_time': 3,
-        'available_extras': {'leche': 0.5, 'azucar': 0.0, 'extra_shot': 1.0}
-    }
-)
+cat_bebidas_f = Category.objects.get_or_create(
+    name="Bebidas Frías",
+    defaults={"category_type": "BEBIDAS", "description": "Jugos y bebidas refrescantes"}
+)[0]
 
-Product.objects.get_or_create(
-    name='Cappuccino',
-    category=cat_bebidas,
-    defaults={
-        'description': 'Café con leche espumosa',
-        'base_price': 4.50,
-        'preparation_time': 5,
-        'available_extras': {'leche_vegetal': 0.5, 'jarabe_vainilla': 0.3}
-    }
-)
+cat_entradas = Category.objects.get_or_create(
+    name="Entradas",
+    defaults={"category_type": "ENTRADAS", "description": "Panes, snacks y acompañamientos"}
+)[0]
 
-Product.objects.get_or_create(
-    name='Chocolate Caliente',
-    category=cat_bebidas,
-    defaults={
-        'description': 'Chocolate artesanal',
-        'base_price': 4.00,
-        'preparation_time': 4,
-        'available_extras': {'crema': 0.5, 'marshmallows': 0.3}
-    }
-)
+cat_comidas = Category.objects.get_or_create(
+    name="Comidas",
+    defaults={"category_type": "COMIDAS", "description": "Platos principales"}
+)[0]
 
-# Bebidas frías
-Product.objects.get_or_create(
-    name='Jugo de Naranja Natural',
-    category=cat_bebidas_frias,
-    defaults={
-        'description': 'Jugo recién exprimido',
-        'base_price': 3.00,
-        'preparation_time': 2,
-        'available_extras': {}
-    }
-)
+cat_postres = Category.objects.get_or_create(
+    name="Postres",
+    defaults={"category_type": "POSTRES", "description": "Dulces y postres caseros"}
+)[0]
 
-Product.objects.get_or_create(
-    name='Batido de Fresa',
-    category=cat_bebidas_frias,
-    defaults={
-        'description': 'Batido cremoso de fresas',
-        'base_price': 5.00,
-        'preparation_time': 4,
-        'available_extras': {'proteina': 1.0, 'extra_fruta': 0.5}
-    }
-)
+print("✓ Categorías creadas")
 
-# Entradas
-Product.objects.get_or_create(
-    name='Croissant',
-    category=cat_entradas,
-    defaults={
-        'description': 'Croissant de mantequilla',
-        'base_price': 2.50,
-        'preparation_time': 2,
-        'available_extras': {}
-    }
-)
 
-Product.objects.get_or_create(
-    name='Pan con Mantequilla',
-    category=cat_entradas,
-    defaults={
-        'description': 'Pan artesanal tostado',
-        'base_price': 1.50,
-        'preparation_time': 3,
-        'available_extras': {}
-    }
-)
+# ==========================================================
+# 3. PRODUCTOS — MENÚ BASE
+# ==========================================================
+print("\n3) Creando productos...\n")
 
-# Comidas
-Product.objects.get_or_create(
-    name='Sandwich de Pollo',
-    category=cat_comidas,
-    defaults={
-        'description': 'Sandwich con pollo a la plancha',
-        'base_price': 8.00,
-        'preparation_time': 10,
-        'available_extras': {'queso': 0.5, 'aguacate': 1.0}
-    }
-)
+productos = [
+    # Bebidas calientes
+    ("Café Americano", cat_bebidas_c, "Café negro tradicional", 3.50, 3,
+     {"leche": 0.5, "azucar": 0, "extra_shot": 1.0}, None),
 
-Product.objects.get_or_create(
-    name='Ensalada César',
-    category=cat_comidas,
-    defaults={
-        'description': 'Ensalada fresca con aderezo César',
-        'base_price': 7.50,
-        'preparation_time': 8,
-        'available_extras': {'pollo': 2.0}
-    }
-)
+    ("Cappuccino", cat_bebidas_c, "Café con leche espumosa", 4.50, 5,
+     {"leche_vegetal": 0.5, "jarabe_vainilla": 0.3}, None),
 
-# Postres
-Product.objects.get_or_create(
-    name='Cheesecake',
-    category=cat_postres,
-    defaults={
-        'description': 'Tarta de queso con frutos rojos',
-        'base_price': 5.50,
-        'preparation_time': 2,
-        'available_extras': {}
-    }
-)
+    ("Chocolate Caliente", cat_bebidas_c, "Chocolate artesanal", 4.00, 4,
+     {"crema": 0.5, "marshmallows": 0.3}, None),
 
-Product.objects.get_or_create(
-    name='Brownie con Helado',
-    category=cat_postres,
-    defaults={
-        'description': 'Brownie caliente con helado de vainilla',
-        'base_price': 6.00,
-        'preparation_time': 5,
-        'available_extras': {'extra_helado': 1.0}
-    }
-)
+    # Bebidas frías
+    ("Jugo de Naranja Natural", cat_bebidas_f, "Jugo recién exprimido", 3.00, 2, {}, None),
+    ("Batido de Fresa", cat_bebidas_f, "Cremoso y dulce", 5.00, 4,
+     {"proteina": 1.0, "extra_fruta": 0.5}, None),
 
-print("✓ 11 Productos creados")
+    # Entradas
+    ("Croissant", cat_entradas, "Croissant clásico", 2.50, 2, {}, None),
+    ("Pan con Mantequilla", cat_entradas, "Pan tostado artesanal", 1.50, 3, {}, None),
 
-# 4. Crear estaciones de cocina
-print("\n4. Creando estaciones de cocina...")
+    # Comidas
+    ("Sandwich de Pollo", cat_comidas, "Pollo a la plancha con vegetales", 8.00, 10,
+     {"queso": 0.5, "aguacate": 1}, None),
 
-KitchenStation.objects.get_or_create(
-    name='Estación Bebidas Calientes',
-    defaults={
-        'station_type': 'BEBIDAS_CALIENTES',
-        'can_handle_categories': ['BEBIDAS']
-    }
-)
+    ("Ensalada César", cat_comidas, "Clásica con aderezo César", 7.50, 8,
+     {"pollo": 2}, None),
 
-KitchenStation.objects.get_or_create(
-    name='Estación Bebidas Frías',
-    defaults={
-        'station_type': 'BEBIDAS_FRIAS',
-        'can_handle_categories': ['BEBIDAS']
-    }
-)
+    # Postres
+    ("Cheesecake", cat_postres, "Tarta de queso", 5.50, 2, {}, None),
+    ("Brownie con Helado", cat_postres, "Brownie caliente con bola de vainilla", 6.00, 5,
+     {"extra_helado": 1.0}, None),
+]
 
-KitchenStation.objects.get_or_create(
-    name='Panadería',
-    defaults={
-        'station_type': 'PANADERIA',
-        'can_handle_categories': ['ENTRADAS']
-    }
-)
+for name, cat, desc, price, prep, extras, season in productos:
+    Product.objects.get_or_create(
+        name=name,
+        category=cat,
+        defaults={
+            "description": desc,
+            "base_price": price,
+            "preparation_time": prep,
+            "available_extras": extras,
+            "season": season
+        }
+    )
 
-KitchenStation.objects.get_or_create(
-    name='Cocina Principal',
-    defaults={
-        'station_type': 'COCINA',
-        'can_handle_categories': ['COMIDAS']
-    }
-)
+print("✓ Productos del menú base creados")
 
-KitchenStation.objects.get_or_create(
-    name='Repostería',
-    defaults={
-        'station_type': 'POSTRES',
-        'can_handle_categories': ['POSTRES']
-    }
-)
 
-print("✓ 5 Estaciones de cocina creadas")
+# ==========================================================
+# 4. PRODUCTOS DE TEMPORADA (estrategia)
+# ==========================================================
+print("\n4) Creando productos de temporada...\n")
 
-print("\n" + "="*50)
-print("✓ Datos inicializados correctamente!")
-print("="*50)
-print("\nCredenciales de acceso:")
-print("- Admin: admin / admin123")
-print("- Mesero: maria_mesera / mesero123")
-print("- Chef: carlos_chef / chef123")
-print("- Cliente: ana_cliente / cliente123")
-print("\nAccede al admin en: http://localhost:8000/admin/")
+productos_temp = [
+    ("Latte de Calabaza", cat_bebidas_c, "Bebida típica de otoño", 4.80, 5,
+     {"crema": 0.3}, "OTONIO"),
+
+    ("Chocolate Navideño", cat_bebidas_c, "Chocolate con especias", 4.50, 4,
+     {"canela": 0.2}, "INVIERNO"),
+
+    ("Helado de Vainilla Especial", cat_postres, "Helado artesanal", 4.00, 2,
+     {"topping_chispas": 0.5}, "VERANO"),
+]
+
+for name, cat, desc, price, prep, extras, season in productos_temp:
+    Product.objects.get_or_create(
+        name=name,
+        category=cat,
+        defaults={
+            "description": desc,
+            "base_price": price,
+            "preparation_time": prep,
+            "available_extras": extras,
+            "season": season
+        }
+    )
+
+print("✓ Productos de temporada creados")
+
+
+# ==========================================================
+# 5. ESTACIONES DE COCINA
+# ==========================================================
+print("\n5) Creando estaciones de cocina...\n")
+
+stations = [
+    ("Estación Bebidas Calientes", "BEBIDAS_CALIENTES", ["BEBIDAS"]),
+    ("Estación Bebidas Frías", "BEBIDAS_FRIAS", ["BEBIDAS"]),
+    ("Panadería", "PANADERIA", ["ENTRADAS"]),
+    ("Cocina Principal", "COCINA", ["COMIDAS"]),
+    ("Repostería", "POSTRES", ["POSTRES"]),
+]
+
+for name, stype, handled in stations:
+    KitchenStation.objects.get_or_create(
+        name=name,
+        defaults={"station_type": stype, "can_handle_categories": handled}
+    )
+
+print("✓ Estaciones creadas")
+
+print("\n" + "=" * 60)
+print("✓ Inicialización completada exitosamente")
+print("=" * 60)
+print("\nCredenciales de prueba:")
+print("• Admin: admin / admin123")
+print("• Meseros: maria_mesera | juan_mesero — clave: mesero123")
+print("• Cocineros: carlos_chef | laura_chef — clave: chef123")
+print("• Clientes: ana_cliente | pedro_cliente | sofia_cliente — clave: cliente123")
+print("\nAdmin panel: http://localhost:8000/admin/")

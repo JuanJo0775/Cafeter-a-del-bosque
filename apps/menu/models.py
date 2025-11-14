@@ -75,10 +75,26 @@ class Product(models.Model):
     is_available = models.BooleanField(default=True)
 
     # DECORATOR: extras disponibles como JSON
-    # Ejemplo: {"leche": 0.5, "azucar": 0.0, "extra_shot": 1.0}
     available_extras = models.JSONField(
         default=dict,
         help_text="Extras disponibles y sus precios: {'extra_name': precio}"
+    )
+
+    SEASON_CHOICES = [
+        ('VERANO', 'Verano'),
+        ('INVIERNO', 'Invierno'),
+        ('OTONIO', 'Otoño'),
+        ('PRIMAVERA', 'Primavera'),
+        ('NINGUNA', 'Sin temporada'),
+    ]
+
+    season = models.CharField(
+        max_length=20,
+        choices=SEASON_CHOICES,
+        null=True,
+        blank=True,
+        default=None,
+        help_text="Temporada del producto (si aplica)"
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

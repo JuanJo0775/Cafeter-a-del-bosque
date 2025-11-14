@@ -39,7 +39,7 @@ python manage.py migrate
 ### 5. Cargar Datos de Prueba
 
 ```bash
-python manage.py shell < scripts/init_data.py
+Get-Content .\scripts\init_data.py | python manage.py shell
 ```
 
 ### 6. Ejecutar Servidor
